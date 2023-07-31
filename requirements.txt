@@ -1,0 +1,13 @@
+tensorflow==2.12.0
+# tensorflow-graphics-gpu @ git+https://github.com/tensorflow/graphics.git
+tensorflow-graphics
+tensorboard
+PyYAML
+matplotlib
+imageio
+scipy
+pandas
+numpy-quaternion
+numpy
+rospkg
+pyparsing==2.4.7

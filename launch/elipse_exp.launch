@@ -1,0 +1,155 @@
+<!-- 
+    > **Example**
+
+    ```
+    roslaunch uuv_gazebo_worlds ocean_waves.launch
+    ```
+
+    ```
+    roslaunch bluerov2_description upload_bluerov2.launch
+    ```
+
+    ```
+    roslaunch mppi_ros start_mppi_controller.launch
+    ```
+-->
+<launch>
+     <arg name="uuv_name" default="rexrov2"
+          doc="Namespace of the vehicle to be controller"/>
+     <!-- Name of the vehicle model -->
+     <arg name="model_name" default="$(arg uuv_name)"/>
+     <!-- Flag to start recoding a rosbag  -->
+     <arg name="record" default="true"
+          doc="Record ROS bag"/>
+
+     <arg name="duration" default="1m"
+          doc="duration of the rosbag recording"/>
+
+     <arg name="use_ned_frame" default="false"
+          doc="If true, the reference frame is set to be NED (North-East-Down) instead of Gazebo's default ENU (East-North-Up)"/>
+
+     <arg name="lambda" default="0.06"
+          doc="Lambda hyperparam in MPPI"/>
+
+     <arg name="alpha" default="0."
+          doc="decoupling factor between cost and noise between [0.; 1.]"/>
+
+     <arg name="upsilon" default="25."
+          doc="augmented noise covariance. Has to be bigger than 1."/>
+
+     <arg name="samples" default="1920"
+          doc="number of samples used for the controller"/>
+
+     <arg name="horizon" default="25"
+          doc="Prediction horizon length"/>
+
+     <arg name="cost"
+          default="$(find mppi_ros)/scripts/mppi_tf/config/tasks/marine_elipse.yaml"
+          doc="Configuration file for the cost function"/>
+
+     <arg name="cost_normalization" default="True"
+          doc="Normalize the cost after the rollouts to tune lambda easier, no theoretical guarentie)"/>
+
+     <arg name="filter_seq" default="True"
+          doc="Weather or not to filter the action sequence at every step to avoid jittering"/>
+
+     <arg name="model"
+          default="$(find mppi_ros)/scripts/mppi_tf/config/models/rexrov2.diag.yaml"
+          doc="The internal model used by mppi"/>
+
+     <arg name="conf"
+          default="$(find mppi_ros)/scripts/mppi_tf/config/controller/marine_paper.default.yaml"
+          doc="Configuration file used for the controller, noise and step size"/>
+
+     <arg name="dt" default="0.1"
+          doc="time interval between two controller actions"/>
+
+     <arg name="state_dim" default="13"
+          doc="the dimensionality of the state vector"/>
+
+     <arg name="action_dim" default="6"
+          doc="the dimensionality of the action vector"/>
+
+     <arg name="log" default="True"
+          doc="True: logs everything in tensorboard."/>
+
+     <arg name="dev" default="False"
+          doc="Enable dev mode. Log_path is augmented with a /dev tag."/>
+
+     <arg name="graph_mode" default="True"
+          doc="Enables tensorflow graph mode computation. Depending on the model, this can considerable speedup the controller."/>
+
+     <arg name="mode" default="buoy"
+          doc="the mode used for the experiment. Valid are | buoy | pos | neg |"/> 
+
+     <arg name="experiments" default="elipse/mppi"
+          doc="SupName for the experiment to generate, will be used for the logging mechanism"/>
+
+     <arg name="save_param" default="True"
+          doc="If true, saves the rosparam server to a file to repeat the experiments"/>
+
+     <arg name="param_namespace" default="mppi"
+          doc="the namespace of the parameters to save"/>
+
+     <arg name="log_path" default="$(find mppi_ros)/log/runs/$(arg experiments)/elipse_cost_$(arg mode)"
+          doc="Path to save the tensorboard log"/>
+
+     <arg name="gpu_idx" default="0"
+          doc="In case of multi-gpu system, choses which one to use"/>
+
+     <arg name="thruster_message" default="WrenchStamped"
+          doc="Message type used to send commands, will be use to create the appropriate
+               publisher, supported are WrenchStamped/Wrendch/Twist"/>
+
+     <arg name="visu_samples" default="True"
+          doc="Enabbles visualisation of samples and obstacles in rviz"/>
+
+     <arg name="odom_frame" default="world"
+          doc="Used as frame when publishing visualisation markers"/>
+
+     <node name="mppi" pkg="mppi_ros" type="mppi_node.py" output="screen">
+          <remap from="odom" to="$(arg uuv_name)/pose_gt"/>
+          <remap from="thruster_input" to="$(arg uuv_name)/thruster_manager/input_stamped"/>
+          <param name="thruster_message" value="$(arg thruster_message)"/>
+          <param name="model_name" value="$(arg model_name)"/>
+          <param name="lambda" value="$(arg lambda)"/>
+          <param name="alpha" value="$(arg alpha)"/>
+          <param name="upsilon" value="$(arg upsilon)"/>
+          <param name="samples" value="$(arg samples)"/>
+          <param name="horizon" value="$(arg horizon)"/>
+          <param name="dt" value="$(arg dt)"/>
+          <param name="state_dim" value="$(arg state_dim)"/>
+          <param name="action_dim" value="$(arg action_dim)"/>
+          <rosparam command="load" file="$(arg cost)" ns="cost"/>
+          <param name="cost_norm" value="$(arg cost_normalization"/>
+          <param name="filter_seq" value="$(arg filter_seq)"/>
+          <rosparam command="load" file="$(arg model)" ns="model"/>
+          <rosparam command="load" file="$(arg conf)" ns="config"/>
+          <param name="log" value="$(arg log)"/>
+          <param name="dev" value="$(arg dev)"/>
+          <param name="graph_mode" value="$(arg graph_mode)"/>
+          <param name="log_path" value="$(arg log_path)"/>
+          <param name="gpu_idx" value="$(arg gpu_idx)"/>
+          <param name="visu_samples" value="$(arg visu_samples)"/>
+          <param name="odom_frame" value="$(arg odom_frame)"/>
+     </node>
+
+     <node pkg="rosbag" type="record" name="rosbag_record" output="screen"
+          args="record -p -o $(arg log_path)/bags/ --duration=$(arg duration) -e '(.*)pid(.*)|(.*)thruster(.*)|(.*)pose_gt(.*)'">
+          <param name="mkdir_bags" command="mkdir -m 777 -p $(arg log_path)/bags/"/>
+     </node>
+
+
+     <node pkg="mppi_ros" type="copy_configs.py" name="copy_configs" output="screen">
+          <param name="cost_file" value="$(arg cost)"/>
+          <param name="model_file" value="$(arg model)"/>
+          <param name="conf_file" value="$(arg conf)"/>
+          <param name="log" value="$(arg log_path)/bags"/>
+          <param name="save_param" value="$(arg save_param)"/>
+          <param name="param_namespace" value="$(arg param_namespace)"/>
+     </node>
+
+     <node pkg="mppi_ros" type="process_seq.py" name="process_seq" output="screen">
+          <param name="log_path" value="$(arg log_path)"/>
+     </node>
+</launch>
